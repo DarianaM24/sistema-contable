@@ -8,13 +8,11 @@ terraform {
     }
   }
 
-  # Backend remoto en S3 para guardar el state (recomendado)
-  # Descomenta esto una vez tengas el bucket creado manualmente
-  # backend "s3" {
-  #   bucket = "sistema-contable-tfstate"
-  #   key    = "prod/terraform.tfstate"
-  #   region = "us-east-1"
-  # }
+  backend "s3" {
+    bucket = "sistema-contable-tfstate"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+  }
 }
 
 provider "aws" {
