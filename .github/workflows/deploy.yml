@@ -80,8 +80,8 @@ jobs:
           name: lambda-zip
           path: .   # Deja el ZIP en la raíz del repo (terraform.tfvars lo apunta con "../lambda.zip")
 
-      - name: Mover ZIP donde Terraform lo espera
-        run: mv ${{ env.LAMBDA_ZIP }} lambda.zip
+      - name: Verificar ZIP
+        run: ls -lh lambda.zip
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
