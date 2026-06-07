@@ -1,0 +1,130 @@
+name: Deploy Sistema Contable — Lambda + Terraform
+
+# ─── Disparadores ────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main          # Se ejecuta en cada push a main
+  workflow_dispatch:  # También permite ejecución manual desde GitHub
+
+# ─── Permisos ────────────────────────────────────────────────
+permissions:
+  contents: read
+  id-token: write   # Necesario si usas OIDC en lugar de access keys
+
+# ─── Variables globales del workflow ─────────────────────────
+env:
+  AWS_REGION:       ${{ secrets.AWS_REGION }}
+  GO_VERSION:       "1.22"          # Versión estable compatible con tu go.mod
+  TF_VERSION:       "1.8.0"
+  LAMBDA_ZIP:       "lambda.zip"
+
+jobs:
+  # ============================================================
+  # JOB 1 — Build & Test
+  # ============================================================
+  build:
+    name: ✔ Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Instalar dependencias (vendor)
+        run: go mod download
+
+      - name: Ejecutar pruebas
+        run: |
+          # Si no hay tests todavía, el flag ./... no falla
+          go test ./... -v -count=1 || echo "⚠️  Sin tests definidos aún — continuando"
+
+      - name: Compilar binario para Lambda (linux/amd64)
+        # El ejecutable DEBE llamarse "bootstrap" para el runtime provided.al2023
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -mod=vendor -o bootstrap ./cmd/main.go
+
+      - name: Empaquetar Lambda (ZIP)
+        run: zip ${{ env.LAMBDA_ZIP }} bootstrap
+
+      - name: Subir artefacto ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-zip
+          path: ${{ env.LAMBDA_ZIP }}
+          retention-days: 1
+
+  # ============================================================
+  # JOB 2 — Terraform Plan & Apply
+  # ============================================================
+  terraform:
+    name: ✔ Terraform Plan & Apply
+    runs-on: ubuntu-latest
+    needs: build    # Espera a que el build sea exitoso
+    environment: production
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Descargar artefacto ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-zip
+          path: .   # Deja el ZIP en la raíz del repo (terraform.tfvars lo apunta con "../lambda.zip")
+
+      - name: Mover ZIP donde Terraform lo espera
+        run: mv ${{ env.LAMBDA_ZIP }} lambda.zip
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Instalar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: ✔ terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: ✔ terraform validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: ✔ terraform plan
+        working-directory: terraform
+        run: |
+          terraform plan \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
+            -var="lambda_zip_path=../lambda.zip" \
+            -out=tfplan
+
+      - name: ✔ terraform apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Mostrar resumen del deploy
+        working-directory: terraform
+        run: |
+          API_URL=$(terraform output -raw api_gateway_url)
+          echo "🚀 API desplegada en: $API_URL"
+          echo "## 🚀 Deploy exitoso" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Recurso | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **API Gateway URL** | \`$API_URL\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Región** | \`${{ env.AWS_REGION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

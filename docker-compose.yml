@@ -1,0 +1,23 @@
+services:
+
+  # ── API Go ─────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sistema_contable_api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: 172.20.32.1
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: posgres4361
+      DB_NAME: sistema_contable_db
+      JWT_SECRET: mi_secreto_super_seguro
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  uploads:
