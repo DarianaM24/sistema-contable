@@ -107,7 +107,11 @@ jobs:
         working-directory: terraform
         run: |
           terraform plan \
-            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="db_host=${{ secrets.DB_HOST }}" \
+            -var="db_port=5432" \
+            -var="db_user=${{ secrets.DB_USER }}" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="db_name=${{ secrets.DB_NAME }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
             -var="lambda_zip_path=../lambda.zip" \
             -out=tfplan

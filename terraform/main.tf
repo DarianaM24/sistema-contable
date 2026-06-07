@@ -113,13 +113,17 @@ resource "aws_lambda_function" "api" {
   timeout     = 30  # segundos
   memory_size = 256 # MB
 
-  environment {
+environment {
     variables = {
-      DATABASE_URL = var.database_url
-      JWT_SECRET   = var.jwt_secret
-      S3_BUCKET    = aws_s3_bucket.uploads.bucket
-      S3_REGION    = var.aws_region
-      GIN_MODE     = "release"
+      DB_HOST    = var.db_host
+      DB_PORT    = var.db_port
+      DB_USER    = var.db_user
+      DB_PASSWORD = var.db_password
+      DB_NAME    = var.db_name
+      JWT_SECRET  = var.jwt_secret
+      S3_BUCKET   = aws_s3_bucket.uploads.bucket
+      S3_REGION   = var.aws_region
+      GIN_MODE    = "release"
     }
   }
 
