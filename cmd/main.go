@@ -1,7 +1,3 @@
-// cmd/main.go — versión Lambda
-// Reemplaza tu main.go actual con este archivo para que funcione en AWS Lambda.
-// Usa la librería aws-lambda-go + gin-lambda-adapter.
-
 package main
 
 import (
@@ -15,6 +11,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 	ginadapter "github.com/awslabs/aws-lambda-go-api-proxy/gin"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
@@ -22,26 +19,23 @@ import (
 var ginLambda *ginadapter.GinLambdaV2
 
 func init() {
-	// En Lambda, .env no existe; las variables vienen del entorno
-	// godotenv.Load() falla silenciosamente si no hay archivo, está bien
 	godotenv.Load()
 
-	gin.SetMode(os.Getenv("GIN_MODE")) // "release" en Lambda
+	gin.SetMode(os.Getenv("GIN_MODE"))
 
 	// 🔌 Conexión a DB
 	DB := database.ConnectDB()
 
 	router := gin.Default()
-	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+
+	// 🌐 CORS
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+	}))
 
 	// 📦 Repositories
 	userRepository := repository.NewUserRepository(DB)
@@ -84,6 +78,5 @@ func init() {
 }
 
 func main() {
-	// Lambda invoca Handler() en cada request
 	lambda.Start(ginLambda.ProxyWithContext)
 }
