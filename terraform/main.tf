@@ -146,11 +146,12 @@ resource "aws_apigatewayv2_api" "main" {
   protocol_type = "HTTP"
   description   = "API Gateway para Sistema Contable"
 
-  cors_configuration {
-    allow_headers = ["Content-Type", "Authorization"]
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_origins = ["*"]
-    max_age       = 300
+cors_configuration {
+    allow_headers  = ["Content-Type", "Authorization", "X-Requested-With"]
+    allow_methods  = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+    allow_origins  = ["*"]
+    expose_headers = ["Content-Length"]
+    max_age        = 300
   }
 
   tags = {
