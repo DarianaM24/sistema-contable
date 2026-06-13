@@ -124,6 +124,7 @@ environment {
       S3_BUCKET   = aws_s3_bucket.uploads.bucket
       S3_REGION   = var.aws_region
       GIN_MODE    = "release"
+      SNS_TOPIC_ARN = aws_sns_topic.notifications.arn
     }
   }
 
@@ -217,4 +218,194 @@ resource "aws_lambda_permission" "apigw" {
   function_name = aws_lambda_function.api.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+# ============================================================
+# SNS Topic — recibe mensajes del backend
+# ============================================================
+resource "aws_sns_topic" "notifications" {
+  name = "${var.project_name}-notifications-${var.environment}"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# ============================================================
+# SQS Queue — recibe mensajes desde SNS
+# ============================================================
+resource "aws_sqs_queue" "notifications_dlq" {
+  name = "${var.project_name}-notifications-dlq-${var.environment}"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "aws_sqs_queue" "notifications" {
+  name                       = "${var.project_name}-notifications-${var.environment}"
+  visibility_timeout_seconds = 30
+  message_retention_seconds  = 86400
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.notifications_dlq.arn
+    maxReceiveCount     = 3
+  })
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# ============================================================
+# Suscripción SNS → SQS
+# ============================================================
+resource "aws_sns_topic_subscription" "sns_to_sqs" {
+  topic_arn = aws_sns_topic.notifications.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.notifications.arn
+}
+
+resource "aws_sqs_queue_policy" "allow_sns" {
+  queue_url = aws_sqs_queue.notifications.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.notifications.arn
+      Condition = {
+        ArnEquals = { "aws:SourceArn" = aws_sns_topic.notifications.arn }
+      }
+    }]
+  })
+}
+
+# ============================================================
+# IAM — Rol para la Lambda de notificaciones
+# ============================================================
+resource "aws_iam_role" "notification_lambda_role" {
+  name = "${var.project_name}-notification-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy" "notification_lambda_policy" {
+  name = "${var.project_name}-notification-policy-${var.environment}"
+  role = aws_iam_role.notification_lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Resource = aws_sqs_queue.notifications.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Permiso para que la Lambda PRINCIPAL pueda publicar en SNS
+resource "aws_iam_role_policy" "lambda_sns" {
+  name = "${var.project_name}-lambda-sns-policy"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sns:Publish"]
+      Resource = aws_sns_topic.notifications.arn
+    }]
+  })
+}
+
+# ============================================================
+# CloudWatch — Logs para la Lambda de notificaciones
+# ============================================================
+resource "aws_cloudwatch_log_group" "notification_lambda_logs" {
+  name              = "/aws/lambda/${var.project_name}-notification-${var.environment}"
+  retention_in_days = 14
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# ============================================================
+# Lambda de Notificaciones
+# ============================================================
+resource "aws_lambda_function" "notification" {
+  function_name    = "${var.project_name}-notification-${var.environment}"
+  description      = "Lambda que recibe SQS y envía correos con SES"
+  filename         = var.notification_lambda_zip_path
+  source_code_hash = filebase64sha256(var.notification_lambda_zip_path)
+  runtime          = "provided.al2023"
+  handler          = "bootstrap"
+  role             = aws_iam_role.notification_lambda_role.arn
+  timeout          = 30
+  memory_size      = 128
+
+  environment {
+    variables = {
+      FROM_EMAIL = var.notification_email
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy.notification_lambda_policy,
+    aws_cloudwatch_log_group.notification_lambda_logs,
+  ]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# ============================================================
+# Event Source Mapping — SQS activa la Lambda de notificaciones
+# ============================================================
+resource "aws_lambda_event_source_mapping" "sqs_to_notification" {
+  event_source_arn = aws_sqs_queue.notifications.arn
+  function_name    = aws_lambda_function.notification.arn
+  batch_size       = 1
+  enabled          = true
 }

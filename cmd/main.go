@@ -55,6 +55,7 @@ func init() {
 	// 🎮 Handlers
 	userHandler := handlers.NewUserHandler(userService, authService)
 	uploadHandler := handlers.NewUploadHandler(uploadRepository)
+	notificationHandler := handlers.NewNotificationHandler()
 
 	// 🔓 Rutas públicas
 	router.OPTIONS("/login", func(c *gin.Context) { c.Status(204) })
@@ -68,11 +69,13 @@ func init() {
 	{
 		auth.OPTIONS("/users/:id", func(c *gin.Context) { c.Status(204) })
 		auth.OPTIONS("/upload", func(c *gin.Context) { c.Status(204) })
+		auth.OPTIONS("/notifications/send", func(c *gin.Context) { c.Status(204) }) // ← nuevo
 		auth.GET("/users", userHandler.GetUsers)
 		auth.GET("/users/:id", userHandler.GetUserByID)
 		auth.PUT("/users/:id", userHandler.UpdateUser)
 		auth.DELETE("/users/:id", userHandler.DeleteUser)
 		auth.POST("/upload", uploadHandler.UploadFile)
+		auth.POST("/notifications/send", notificationHandler.SendNotification) // ← nuevo
 	}
 
 	// Adapter Gin → Lambda

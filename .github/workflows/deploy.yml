@@ -45,20 +45,32 @@ jobs:
           # Si no hay tests todavía, el flag ./... no falla
           go test ./... -v -count=1 || echo "⚠️  Sin tests definidos aún — continuando"
 
-      - name: Compilar binario para Lambda (linux/amd64)
-        # El ejecutable DEBE llamarse "bootstrap" para el runtime provided.al2023
+      - name: Compilar Lambda principal (Gin API)
         run: |
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
             go build -mod=vendor -o bootstrap ./cmd/main.go
+          zip ${{ env.LAMBDA_ZIP }} bootstrap
+          rm bootstrap
 
-      - name: Empaquetar Lambda (ZIP)
-        run: zip ${{ env.LAMBDA_ZIP }} bootstrap
+      - name: Compilar Lambda de notificaciones
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -mod=vendor -o bootstrap ./cmd/notification-lambda/main.go
+          zip notification-lambda.zip bootstrap
+          rm bootstrap
 
-      - name: Subir artefacto ZIP
+      - name: Subir artefacto Lambda principal
         uses: actions/upload-artifact@v4
         with:
           name: lambda-zip
           path: ${{ env.LAMBDA_ZIP }}
+          retention-days: 1
+
+      - name: Subir artefacto Lambda de notificaciones
+        uses: actions/upload-artifact@v4
+        with:
+          name: notification-lambda-zip
+          path: notification-lambda.zip
           retention-days: 1
 
   # ============================================================
@@ -74,14 +86,20 @@ jobs:
       - name: Checkout código fuente
         uses: actions/checkout@v4
 
-      - name: Descargar artefacto ZIP
+      - name: Descargar artefacto Lambda principal
         uses: actions/download-artifact@v4
         with:
           name: lambda-zip
-          path: .   # Deja el ZIP en la raíz del repo (terraform.tfvars lo apunta con "../lambda.zip")
+          path: .
 
-      - name: Verificar ZIP
-        run: ls -lh lambda.zip
+      - name: Descargar artefacto Lambda de notificaciones
+        uses: actions/download-artifact@v4
+        with:
+          name: notification-lambda-zip
+          path: .
+
+      - name: Verificar ZIPs
+        run: ls -lh lambda.zip notification-lambda.zip
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -114,6 +132,8 @@ jobs:
             -var="db_name=${{ secrets.DB_NAME }}" \
             -var="jwt_secret=${{ secrets.JWT_SECRET }}" \
             -var="lambda_zip_path=../lambda.zip" \
+            -var="notification_lambda_zip_path=../notification-lambda.zip" \
+            -var="notification_email=${{ secrets.NOTIFICATION_EMAIL }}" \
             -out=tfplan
 
       - name: ✔ terraform apply

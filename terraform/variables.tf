@@ -54,3 +54,14 @@ variable "db_name" {
   description = "Nombre de la base de datos"
   type        = string
 }
+
+variable "notification_email" {
+  description = "Email verificado en AWS SES que enviará los correos"
+  type        = string
+}
+
+variable "notification_lambda_zip_path" {
+  description = "Ruta al ZIP de la Lambda de notificaciones"
+  type        = string
+  default     = "../notification-lambda.zip"
+}
