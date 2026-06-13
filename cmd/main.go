@@ -66,7 +66,6 @@ func init() {
 	auth := router.Group("/")
 	auth.Use(middleware.JWTMiddleware())
 	{
-		auth.OPTIONS("/users", func(c *gin.Context) { c.Status(204) })
 		auth.OPTIONS("/users/:id", func(c *gin.Context) { c.Status(204) })
 		auth.OPTIONS("/upload", func(c *gin.Context) { c.Status(204) })
 		auth.GET("/users", userHandler.GetUsers)
