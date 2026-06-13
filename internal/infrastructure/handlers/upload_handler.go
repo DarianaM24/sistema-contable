@@ -9,6 +9,9 @@ import (
 	"sistema_contable/internal/domain"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +26,6 @@ func NewUploadHandler(repo output.UploadRepository) *UploadHandler {
 // POST /upload
 func (h *UploadHandler) UploadFile(c *gin.Context) {
 
-	// Obtener el archivo del form-data (campo "file")
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -33,31 +35,42 @@ func (h *UploadHandler) UploadFile(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Crear carpeta uploads/ si no existe
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "No se pudo crear el directorio de uploads",
-		})
-		return
-	}
-
 	// Nombre único: timestamp + extensión original
 	ext := filepath.Ext(header.Filename)
 	fileName := fmt.Sprintf("%d%s", time.Now().UnixMilli(), ext)
-	filePath := filepath.Join(uploadDir, fileName)
 
-	// Guardar archivo en disco
-	if err := c.SaveUploadedFile(header, filePath); err != nil {
+	// Subir a S3
+	bucket := os.Getenv("S3_BUCKET")
+	region := os.Getenv("S3_REGION")
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "No se pudo guardar el archivo",
+			"error": "No se pudo crear sesión de AWS",
 		})
 		return
 	}
 
-	fileURL := fmt.Sprintf("/uploads/%s", fileName)
+	svc := s3.New(sess)
+	_, err = svc.PutObject(&s3.PutObjectInput{
+		Bucket:        aws.String(bucket),
+		Key:           aws.String(fileName),
+		Body:          file,
+		ContentLength: aws.Int64(header.Size),
+		ContentType:   aws.String(header.Header.Get("Content-Type")),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("No se pudo subir el archivo a S3: %s", err.Error()),
+		})
+		return
+	}
 
-	// 💾 Guardar referencia en base de datos
+	fileURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucket, region, fileName)
+
+	// Guardar referencia en base de datos
 	upload := domain.Upload{
 		FileName: fileName,
 		FileURL:  fileURL,
