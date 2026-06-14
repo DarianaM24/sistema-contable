@@ -4,7 +4,8 @@ name: Deploy Sistema Contable — Lambda + Terraform
 on:
   push:
     branches:
-      - main          # Se ejecuta en cada push a main
+      - main    # Se ejecuta en cada push a main
+      - master      
   workflow_dispatch:  # También permite ejecución manual desde GitHub
 
 # ─── Permisos ────────────────────────────────────────────────
