@@ -42,3 +42,18 @@ output "notification_lambda_name" {
   description = "Nombre de la Lambda de notificaciones"
   value       = aws_lambda_function.notification.function_name
 }
+
+output "scheduler_schedule_name" {
+  description = "Nombre de la tarea programada de EventBridge Scheduler"
+  value       = aws_scheduler_schedule.heartbeat_notification.name
+}
+
+output "scheduler_schedule_arn" {
+  description = "ARN de la tarea programada de EventBridge Scheduler"
+  value       = aws_scheduler_schedule.heartbeat_notification.arn
+}
+
+output "scheduler_expression" {
+  description = "Expresion rate/cron utilizada por el schedule"
+  value       = aws_scheduler_schedule.heartbeat_notification.schedule_expression
+}
