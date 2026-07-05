@@ -57,3 +57,13 @@ output "scheduler_expression" {
   description = "Expresion rate/cron utilizada por el schedule"
   value       = aws_scheduler_schedule.heartbeat_notification.schedule_expression
 }
+
+output "heartbeat_lambda_name" {
+  description = "Nombre de la Lambda invocada por el EventBridge Scheduler"
+  value       = aws_lambda_function.heartbeat.function_name
+}
+
+output "heartbeat_lambda_log_group" {
+  description = "Grupo de logs en CloudWatch de la Lambda de heartbeat"
+  value       = aws_cloudwatch_log_group.heartbeat_lambda_logs.name
+}

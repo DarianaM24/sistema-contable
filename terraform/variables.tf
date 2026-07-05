@@ -65,3 +65,9 @@ variable "notification_lambda_zip_path" {
   type        = string
   default     = "../notification-lambda.zip"
 }
+
+variable "heartbeat_lambda_zip_path" {
+  description = "Ruta al ZIP de la Lambda de heartbeat (EventBridge Scheduler)"
+  type        = string
+  default     = "../heartbeat-lambda.zip"
+}

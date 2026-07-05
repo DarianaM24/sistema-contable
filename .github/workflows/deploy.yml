@@ -60,6 +60,13 @@ jobs:
           zip notification-lambda.zip bootstrap
           rm bootstrap
 
+      - name: Compilar Lambda de heartbeat (EventBridge Scheduler)
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -mod=vendor -o bootstrap ./cmd/heartbeat-lambda/main.go
+          zip heartbeat-lambda.zip bootstrap
+          rm bootstrap
+
       - name: Subir artefacto Lambda principal
         uses: actions/upload-artifact@v4
         with:
@@ -72,6 +79,13 @@ jobs:
         with:
           name: notification-lambda-zip
           path: notification-lambda.zip
+          retention-days: 1
+
+      - name: Subir artefacto Lambda de heartbeat
+        uses: actions/upload-artifact@v4
+        with:
+          name: heartbeat-lambda-zip
+          path: heartbeat-lambda.zip
           retention-days: 1
 
   # ============================================================
@@ -99,8 +113,14 @@ jobs:
           name: notification-lambda-zip
           path: .
 
+      - name: Descargar artefacto Lambda de heartbeat
+        uses: actions/download-artifact@v4
+        with:
+          name: heartbeat-lambda-zip
+          path: .
+
       - name: Verificar ZIPs
-        run: ls -lh lambda.zip notification-lambda.zip
+        run: ls -lh lambda.zip notification-lambda.zip heartbeat-lambda.zip
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -135,6 +155,7 @@ jobs:
             -var="lambda_zip_path=../lambda.zip" \
             -var="notification_lambda_zip_path=../notification-lambda.zip" \
             -var="notification_email=${{ secrets.NOTIFICATION_EMAIL }}" \
+            -var="heartbeat_lambda_zip_path=../heartbeat-lambda.zip" \
             -out=tfplan
 
       - name: ✔ terraform apply
